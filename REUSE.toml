@@ -1,0 +1,44 @@
+# REUSE 3.2 configuration — https://reuse.software
+#
+# Declares copyright and licensing for files that cannot carry an SPDX header
+# (JSON, generated output, license texts). Files that *can* carry a header
+# should carry one; `make reuse-lint` enforces that every file is covered.
+#
+# Licensing follows gardener/gardener: Apache-2.0 for code, CC-BY-4.0 for
+# documentation. The copyright holder is the author personally, and would change
+# to "Contributors to the Gardener project" only if the project is ever donated
+# to the Gardener organisation (architecture-review.md §16).
+
+version = 1
+SPDX-PackageName = "gardener-mcp-server"
+SPDX-PackageSupplier = "Girma Yilma <girmamamuye@gmail.com>"
+SPDX-PackageDownloadLocation = "https://github.com/gmyilma/gardener-mcp-server"
+
+# Default for everything not matched more specifically below.
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Girma Yilma"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Documentation is CC-BY-4.0, as in gardener/gardener.
+[[annotations]]
+path = ["docs/**", "README.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "prompts/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Girma Yilma"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Machine-managed files that must not be edited by hand to add a header.
+[[annotations]]
+path = ["go.mod", "go.sum", "mise.lock", "schemas/**", "LICENSE", "LICENSES/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Girma Yilma"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Test fixtures are data, not authored prose. They include a deliberate
+# prompt-injection corpus (architecture-review.md §4), so keep them plain.
+[[annotations]]
+path = "test/fixtures/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Girma Yilma"
+SPDX-License-Identifier = "Apache-2.0"

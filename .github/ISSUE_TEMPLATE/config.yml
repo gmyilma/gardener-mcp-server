@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: true
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/gmyilma/gardener-mcp-server/security/advisories/new
+    about: >-
+      Please do not open a public issue for a security problem. Report it
+      privately here, or email girmamamuye@gmail.com. See SECURITY.md.
+
+  - name: Propose a diagnostic rule
+    url: https://github.com/gmyilma/gardener-mcp-server/issues/new?labels=rule&template=diagnostic-rule.yml
+    about: >-
+      Real Gardener failure modes are the most valuable contribution to this
+      project right now.

@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Propose a diagnostic rule
+description: A real Gardener failure mode worth diagnosing deterministically
+labels: [rule]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The rule engine is where this project's value lives. Without
+        well-curated rules it is a thin proxy over what generic Kubernetes MCP
+        servers already do.
+
+        The most useful proposals come from failures you have actually debugged.
+
+        **Redact cluster data.** No real project or Shoot names, no kubeconfigs,
+        no tokens.
+
+  - type: textarea
+    id: failure
+    attributes:
+      label: The failure mode
+      description: What breaks, and what an operator sees first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: signals
+    attributes:
+      label: Observable signals
+      description: >-
+        Which fields show it, and in which cluster. Gardener error codes,
+        condition types and reasons, extension `lastError`, Machine
+        `lastOperation`, Etcd conditions. Be specific about the field path.
+      placeholder: |
+        garden: Shoot.status.lastErrors[].codes contains ERR_INFRA_QUOTA_EXCEEDED
+        seed:   Worker.status.lastError.codes ...
+        shoot:  Node condition Ready=Unknown ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: What an operator concludes from it
+      description: >-
+        The interpretation the rule should produce. Remember the server writes
+        templates plus validated identifiers only — no cluster text (ADR-0004).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Proposed severity
+      options: [critical, error, warning, info]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Proposed confidence
+      description: >-
+        high = a direct Gardener error code or condition reason.
+        medium = a correlation across layers.
+        low = a heuristic such as an age threshold.
+      options: [high, medium, low]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Which persona can see the evidence
+      description: >-
+        Shoot owners have no Seed access, so a rule depending on Seed state can
+        only fire for the operator persona.
+      options:
+        - both
+        - operator only (needs Seed or control-plane state)
+    validations:
+      required: true
+
+  - type: textarea
+    id: next-steps
+    attributes:
+      label: Useful next diagnostic steps
+      description: Which tool an operator would reach for next, and why.
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Can it be reproduced in the local setup?
+      description: >-
+        A way to trigger this in Gardener's local setup makes it testable in CI
+        and is enormously valuable. Say so if you do not know of one.

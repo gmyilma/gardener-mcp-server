@@ -114,11 +114,17 @@ generate-check: generate ## Fail if generated files are out of date
 		git status --porcelain; exit 1; \
 	fi
 
+# The charset-normalizer extra is required: without an encoding-detection
+# module, reuse fails at import time rather than with a useful message.
 .PHONY: reuse-lint
 reuse-lint: ## Check SPDX/REUSE licensing compliance
-	@if command -v uvx >/dev/null 2>&1; then uvx reuse lint; \
-	elif command -v reuse >/dev/null 2>&1; then reuse lint; \
-	else echo "skipped: install with 'uv tool install reuse' or 'pipx install reuse'"; fi
+	@if command -v uvx >/dev/null 2>&1; then \
+		uvx --from "reuse[charset-normalizer]" reuse lint; \
+	elif command -v reuse >/dev/null 2>&1; then \
+		reuse lint; \
+	else \
+		echo "skipped: install uv (brew install uv) or 'pipx install reuse[charset-normalizer]'"; \
+	fi
 
 .PHONY: check
 check: lint tidy-check vulncheck reuse-lint ## Run every static check

@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug report
+description: Something behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Not for security issues.** If this involves a leaked credential, a
+        read outside the intended scope, or a write against a cluster, report it
+        privately — see [SECURITY.md](../blob/main/SECURITY.md).
+
+        **Redact cluster data.** Project names, Shoot names, hostnames and
+        internal IPs are rarely needed to reproduce a bug. Never paste a
+        kubeconfig or token.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest sequence that shows the problem.
+      placeholder: |
+        1. Start the server with ...
+        2. Call the tool ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Deployment mode
+      options:
+        - local (stdio)
+        - service (HTTP)
+        - not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Persona
+      options:
+        - shoot-owner
+        - operator
+        - not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      description: Output of `gardener-mcp-server --version`, or the commit SHA.
+    validations:
+      required: true
+
+  - type: input
+    id: gardener-version
+    attributes:
+      label: Gardener version
+      description: The Gardener version of the landscape involved, if known.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Redacted server output or tool response. Rendered as a code block.
+      render: text

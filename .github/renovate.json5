@@ -1,0 +1,92 @@
+{
+  // Renovate keeps dependencies current without turning every bump into a
+  // decision. Gardener repositories use renovate.json5 (review section 16).
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  extends: [
+    "config:recommended",
+    ":semanticCommits",
+    // Rewrites `uses: actions/checkout@v5` to an immutable commit SHA with the
+    // tag kept as a comment. A moving tag means a third party can change what
+    // CI executes, which is the action-supply-chain gap left open in ci.yaml.
+    "helpers:pinGitHubActionDigests",
+    // Wait for a release to have been out a few days before proposing it.
+    "npm:unpublishSafe",
+  ],
+
+  timezone: "Europe/Berlin",
+  schedule: ["before 6am on monday"],
+  prConcurrentLimit: 5,
+  labels: ["dependencies"],
+
+  // Security fixes ignore the schedule entirely.
+  vulnerabilityAlerts: {
+    enabled: true,
+    schedule: ["at any time"],
+    labels: ["dependencies", "security"],
+    prPriority: 10,
+  },
+  osvVulnerabilityAlerts: true,
+
+  postUpdateOptions: ["gomodTidy"],
+
+  packageRules: [
+    {
+      // Kubernetes libraries move together, and controller-runtime must match
+      // the k8s version pulled in by gardener/pkg/apis (ADR-0003). Splitting
+      // these into separate PRs produces combinations that do not compile.
+      groupName: "kubernetes and controller-runtime",
+      matchPackagePatterns: [
+        "^k8s\\.io/",
+        "^sigs\\.k8s\\.io/controller-runtime",
+      ],
+    },
+    {
+      // Gardener modules follow Gardener's minor releases; review them as one
+      // unit against the supported version window.
+      groupName: "gardener api modules",
+      matchPackagePatterns: [
+        "^github\\.com/gardener/",
+      ],
+      // Never silently cross a Gardener minor. That can change conditions,
+      // fields and error codes the rule engine depends on.
+      matchUpdateTypes: ["minor", "major"],
+      dependencyDashboardApproval: true,
+    },
+    {
+      groupName: "github actions",
+      matchManagers: ["github-actions"],
+      // Digest pins produce noise otherwise.
+      matchUpdateTypes: ["minor", "patch", "digest"],
+      automerge: false,
+    },
+    {
+      // The Go directive in go.mod is a deliberate floor set by what
+      // gardener/pkg/apis requires. Renovate should not raise it unasked.
+      matchManagers: ["gomod"],
+      matchDepTypes: ["golang"],
+      enabled: false,
+    },
+    {
+      // Tool versions in .mise.toml. Safe to group; they do not ship in the
+      // binary.
+      groupName: "dev tools",
+      matchManagers: ["mise"],
+    },
+  ],
+
+  customManagers: [
+    {
+      // Keep the pinned govulncheck version in the Makefile and workflows in
+      // step with each other.
+      customType: "regex",
+      fileMatch: ["^Makefile$", "^\\.github/workflows/.+\\.yaml$"],
+      matchStrings: [
+        "golang\\.org/x/vuln/cmd/govulncheck@(?<currentValue>v[\\d.]+)",
+        "GOVULNCHECK_VERSION \\?= (?<currentValue>v[\\d.]+)",
+      ],
+      depNameTemplate: "golang.org/x/vuln",
+      datasourceTemplate: "go",
+    },
+  ],
+}

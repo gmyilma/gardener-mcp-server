@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Release build definition. Run by .github/workflows/release.yaml on a v* tag,
+# and reproducible locally with `make snapshot`.
+#
+# Every release ships a checksum file, an SBOM per artifact, and a keyless
+# cosign signature over the checksums. That is the "signed releases and SBOM"
+# mitigation for the supply-chain row of the threat model (review section 4)
+# and a v0.1.0 requirement in section 16.
+
+version: 2
+project_name: gardener-mcp-server
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: gardener-mcp-server
+    main: ./cmd/gardener-mcp-server
+    binary: gardener-mcp-server
+
+    # Static binary: required for the distroless image, which has no libc.
+    env:
+      - CGO_ENABLED=0
+
+    # -trimpath strips local filesystem paths from the binary, which is both a
+    # small information leak and a source of build irreproducibility.
+    flags:
+      - -trimpath
+
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+      - -X main.buildDate={{ .CommitDate }}
+
+    # Use the commit timestamp rather than "now", so rebuilding the same tag
+    # produces byte-identical output.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Software bill of materials, one per archive, so consumers can audit what they
+# are running without unpacking it.
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+
+# Keyless signing over the checksum file. Identity comes from the workflow's
+# GitHub OIDC token and is recorded in the public Rekor transparency log, so
+# there is no private key to store or rotate.
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    artifacts: checksum
+    certificate: "${artifact}.pem"
+    output: true
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+
+# A single multi-platform image. dockers_v2 handles both architectures and
+# publishes one multi-arch tag, so there is no separate manifest stanza and
+# users pull by version rather than by architecture.
+dockers_v2:
+  - id: gardener-mcp-server
+    ids: [gardener-mcp-server]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/gmyilma/gardener-mcp-server
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    tags:
+      - "{{ .Version }}"
+      # Only move `latest` for a real release. Every tag before v0.1.0 is
+      # experimental, and `latest` pointing at one would misrepresent it.
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    # Attach an SBOM to the image, matching the one shipped with the archives.
+    sbom: true
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "Gardener-aware diagnostics over the Model Context Protocol"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.licenses: "Apache-2.0"
+
+docker_signs:
+  - id: cosign-images
+    cmd: cosign
+    artifacts: manifests
+    output: true
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - "--yes"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Security
+      regexp: '^sec(\(.+\))?!?:'
+      order: 2
+    - title: Other
+      order: 99
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+
+release:
+  draft: false
+  # Every tag before v0.1.0 is experimental; mark it so nobody mistakes an
+  # early tag for something supported.
+  prerelease: auto
+  footer: |
+    ---
+
+    **Verify this release**
+
+    ```console
+    cosign verify-blob checksums.txt \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      --certificate-identity-regexp 'https://github.com/gmyilma/gardener-mcp-server/.*' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    ```
+
+    This server has no resource-mutation path. See SECURITY.md.

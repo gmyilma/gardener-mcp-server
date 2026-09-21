@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Continuous delivery: turn a tagged commit into artifacts people can verify.
+#
+# CI (ci.yaml) answers "is this safe to merge?" and runs constantly. This
+# workflow answers "produce the released artifact for this exact commit" and
+# runs only on a v* tag. The tag is the handoff between the two.
+#
+# It re-runs the full verification before publishing. A tag can be pushed
+# without ever having passed CI, so trusting an earlier green run would leave a
+# gap: nothing gets signed that has not just been linted, tested and scanned.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: auto
+
+jobs:
+  # Re-verify from scratch. Cheap compared to publishing something broken.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - run: make lint
+      - run: make test
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - run: govulncheck ./...
+
+  release:
+    name: release
+    needs: [verify]
+    runs-on: ubuntu-latest
+    permissions:
+      # Create the GitHub Release and upload artifacts.
+      contents: write
+      # Push images to ghcr.io.
+      packages: write
+      # Mint the OIDC token cosign uses for keyless signing. Without this the
+      # signing steps in .goreleaser.yaml fail.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # goreleaser builds the changelog from history, which a shallow
+          # checkout does not contain.
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+
+      # Needed for the linux/arm64 image on an amd64 runner.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run goreleaser
+        run: goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tells cosign to sign keylessly using the workflow's OIDC identity,
+          # which is recorded in the public Rekor transparency log. No private
+          # key is stored anywhere.
+          COSIGN_EXPERIMENTAL: "1"
+
+      - name: Summarise the release
+        run: |
+          {
+            echo "### Released \`${GITHUB_REF_NAME}\`"
+            echo
+            echo "Verify the checksums with:"
+            echo
+            echo '```console'
+            echo "cosign verify-blob checksums.txt \\"
+            echo "  --certificate checksums.txt.pem \\"
+            echo "  --signature checksums.txt.sig \\"
+            echo "  --certificate-identity-regexp 'https://github.com/${GITHUB_REPOSITORY}/.*' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

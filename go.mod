@@ -12,3 +12,5 @@ toolchain go1.26.8
 // Dev tools are deliberately not listed as `tool` directives here. Keeping them
 // in .mise.toml leaves this file describing only what ships in the binary,
 // which is what makes the dependency graph auditable (architecture-review.md §7).
+
+require golang.org/x/text v0.42.0

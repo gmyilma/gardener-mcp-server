@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 Girma Yilma
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Continuous integration: everything that must hold before a change can merge.
+#
+# The jobs mirror `make verify`, and take their toolchain from the same
+# .mise.toml and mise.lock a developer uses. That is what makes "green locally"
+# mean "green in CI" rather than "probably fine".
+#
+# Action versions are floating tags for now. Renovate is configured with
+# helpers:pinGitHubActionDigests and will replace them with immutable SHAs on
+# its first run, closing the action-supply-chain gap in review section 4.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege by default; jobs escalate only if they must.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the previous run irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Stops CI from quietly using a toolchain other than the one go.mod names.
+  GOTOOLCHAIN: auto
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - run: make lint
+
+  tidy:
+    name: tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - name: Verify go.mod and go.sum are tidy
+        run: make tidy-check
+      - name: Verify generated files are current
+        run: make generate-check
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - name: Unit tests with race detector
+        run: make test
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+          retention-days: 7
+
+  build:
+    # Seeds and Garden runtimes run on both architectures, and local mode runs
+    # on operator laptops, so all three targets have to keep compiling.
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - name: Cross-compile
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath ./...
+
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+        with:
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      - name: Scan dependencies for known vulnerabilities
+        run: govulncheck ./...
+
+  reuse:
+    name: reuse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check SPDX licensing compliance
+        uses: fsfe/reuse-action@v5
+
+  # One required status check for branch protection. Because `needs` failures
+  # propagate, adding a job above cannot silently escape the gate.
+  ci-success:
+    name: ci
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint, tidy, test, build, vulncheck, reuse]
+    steps:
+      - name: Fail if any required job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "One or more CI jobs did not succeed:"
+          echo '${{ toJSON(needs) }}'
+          exit 1
+      - run: echo "All CI jobs passed."

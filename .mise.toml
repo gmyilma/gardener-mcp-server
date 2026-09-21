@@ -1,0 +1,54 @@
+# mise configuration — reproducible, per-project toolchain.
+#
+# This is the closest thing Go has to a Python virtualenv. There is nothing to
+# "activate": entering this directory selects the Go version and the tool
+# versions below, and puts the project-local ./bin on PATH so they shadow
+# anything installed globally. Dependency isolation for library code is already
+# handled by go.mod and needs nothing here.
+#
+# Dev tools live here rather than in go.mod `tool` directives on purpose.
+# docs/design/architecture-review.md §7 treats dependency weight as a design
+# constraint; `tool` directives would pull golangci-lint's and goreleaser's full
+# dependency trees into go.sum and `go mod graph`, making the runtime dependency
+# surface much harder to audit. Keeping them split means go.mod describes only
+# what ships in the binary.
+#
+# Setup for a new contributor:  mise install && make tools
+# Exact versions are recorded in mise.lock, which is committed.
+
+[tools]
+# Must stay >= the `go` directive in github.com/gardener/gardener/pkg/apis
+# (currently go 1.26.0). Keep in sync with the `go` directive in go.mod.
+go = "1.26.8"
+
+# Static analysis. The config in .golangci.yaml uses the v2 schema.
+golangci-lint = "2.13.2"
+
+# Release automation, also used by .github/workflows/release.yaml.
+goreleaser = "2.18.2"
+
+# Supply-chain tooling for signed releases with an SBOM
+# (architecture-review.md §4, "Supply chain"; §16 "signed images and SBOM").
+syft = "1.52.0"
+cosign = "3.1.3"
+
+[env]
+# Project-local tool directory — the analogue of .venv/bin.
+# `go install` inside this repo writes here instead of ~/go/bin, so tools are
+# pinned per project and never collide across checkouts.
+GOBIN = "{{config_root}}/bin"
+_.path = ["{{config_root}}/bin"]
+
+# Let the Go toolchain fetch the exact version named in go.mod when it differs
+# from the one installed above. This keeps builds reproducible for contributors
+# who do not use mise.
+GOTOOLCHAIN = "auto"
+
+[settings]
+# Record resolved versions and checksums in mise.lock so every machine and CI
+# runner gets byte-identical tools.
+lockfile = true
+
+[tasks.setup]
+description = "Install the toolchain and all pinned dev tools"
+run = ["mise install", "go mod download", "make tools"]

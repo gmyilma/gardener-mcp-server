@@ -1,0 +1,29 @@
+# Project-local tool directory populated by `make tools` (GOBIN).
+# Treated like a virtualenv: reproducible from go.mod, never committed.
+/bin/
+
+# Build output
+/dist/
+/gardener-mcp-server
+
+# Test and coverage artifacts
+/cover.out
+/cover.html
+/test/e2e/artifacts/
+
+# Local developer overrides (mise.local.toml is gitignored by convention)
+/.mise.local.toml
+/.env
+/.envrc
+
+# Kubeconfigs must never be committed. The server reads them from paths given
+# at runtime; any file landing here is an accident worth catching early.
+*.kubeconfig
+kubeconfig*
+/hack/local/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

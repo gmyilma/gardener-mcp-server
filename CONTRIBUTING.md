@@ -43,6 +43,18 @@ golangci-lint's and goreleaser's whole dependency trees into `go.sum` and
 `go mod graph`, and keeping the runtime dependency surface small and auditable
 is a design constraint here (architecture review, section 7).
 
+### The one Python tool
+
+`reuse` (SPDX licence checking) is the only Python dependency, and it is always
+run in an **isolated environment** — `uvx` creates a throwaway virtualenv per
+invocation, `pipx` keeps one per tool. `make reuse-lint` prefers `uvx` and falls
+back to `pipx`.
+
+Please do not `pip install reuse` into a system or user environment. This
+project has no Python source and should never add packages to a shared
+interpreter; the same reasoning that keeps dev tools out of `go.mod` applies
+here.
+
 ## Make targets
 
 ```console

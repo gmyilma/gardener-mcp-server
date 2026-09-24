@@ -114,16 +114,22 @@ generate-check: generate ## Fail if generated files are out of date
 		git status --porcelain; exit 1; \
 	fi
 
+# reuse is the only Python tool this project uses, and it is always run in an
+# isolated environment — never installed into a system or user site-packages.
+# uvx creates a throwaway virtualenv per invocation; pipx keeps one per tool.
+# A bare `pip install reuse` is deliberately not supported.
+#
 # The charset-normalizer extra is required: without an encoding-detection
 # module, reuse fails at import time rather than with a useful message.
 .PHONY: reuse-lint
-reuse-lint: ## Check SPDX/REUSE licensing compliance
+reuse-lint: ## Check SPDX/REUSE licensing compliance (isolated Python env)
 	@if command -v uvx >/dev/null 2>&1; then \
 		uvx --from "reuse[charset-normalizer]" reuse lint; \
-	elif command -v reuse >/dev/null 2>&1; then \
-		reuse lint; \
+	elif command -v pipx >/dev/null 2>&1; then \
+		pipx run --spec "reuse[charset-normalizer]" reuse lint; \
 	else \
-		echo "skipped: install uv (brew install uv) or 'pipx install reuse[charset-normalizer]'"; \
+		echo "skipped: install uv (brew install uv) or pipx — both isolate the tool"; \
+		echo "         do not 'pip install reuse' into a shared environment"; \
 	fi
 
 .PHONY: check

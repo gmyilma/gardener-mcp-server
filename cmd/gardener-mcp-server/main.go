@@ -12,15 +12,24 @@
 //	service streamable HTTP, using the server's own ServiceAccount. Single
 //	        tenant: one persona and one project scope per deployment.
 //
-// M0 wires up flags and version reporting only. The MCP server itself arrives
-// in M1.
+// Service mode arrives in M1.6.
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
+	"strings"
+	"syscall"
+
+	"github.com/gmyilma/gardener-mcp-server/internal/audit"
+	"github.com/gmyilma/gardener-mcp-server/internal/policy"
+	"github.com/gmyilma/gardener-mcp-server/internal/server"
+	"github.com/gmyilma/gardener-mcp-server/internal/tools/serverinfo"
 )
 
 // Injected at build time via -ldflags; see the Makefile.
@@ -32,7 +41,7 @@ var (
 
 // config holds the command-line configuration. Keeping it as a plain struct
 // populated by a function, rather than reading globals, is what makes the
-// wiring testable later.
+// wiring testable.
 //
 // Go note: this is the idiomatic alternative to a DI container. Dependencies
 // are passed explicitly down from main rather than resolved from a registry —
@@ -61,8 +70,8 @@ func parseFlags(args []string, stderr *os.File) (*config, error) {
 }
 
 // validate rejects unknown enum values before anything else runs. The policy
-// layer in M1 will enforce the same values again at request time; this is only
-// the startup check.
+// layer enforces the same values again at request time; this is only the
+// startup check.
 func (c *config) validate() error {
 	switch c.mode {
 	case "local", "service":
@@ -79,6 +88,22 @@ func (c *config) validate() error {
 	return nil
 }
 
+// projectList splits the allowlist flag. An empty flag yields nil, meaning
+// "no restriction beyond the credential's own RBAC".
+func (c *config) projectList() []string {
+	if strings.TrimSpace(c.projects) == "" {
+		return nil
+	}
+	parts := strings.Split(c.projects, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "gardener-mcp-server: %v\n", err)
@@ -86,8 +111,10 @@ func main() {
 	}
 }
 
-// run holds the real logic so that main stays a thin shell around it. Returning
-// an error instead of calling os.Exit is what makes this reachable from tests.
+// run dispatches: parse flags, handle --version, otherwise serve.
+//
+// Returning an error rather than calling os.Exit is what makes this reachable
+// from tests.
 func run(args []string) error {
 	cfg, err := parseFlags(args, os.Stderr)
 	if err != nil {
@@ -100,9 +127,54 @@ func run(args []string) error {
 		return nil
 	}
 
+	return serve(cfg)
+}
+
+// serve validates the configuration, wires the layers together and runs the
+// MCP server until the client disconnects.
+func serve(cfg *config) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
 
-	return fmt.Errorf("mode %q is not implemented yet: the MCP server arrives in M1", cfg.mode)
+	if cfg.mode == "service" {
+		return errors.New("service mode is not implemented yet: it arrives in M1.6")
+	}
+
+	pol, err := policy.New(policy.Config{
+		Persona:  policy.Persona(cfg.persona),
+		Projects: cfg.projectList(),
+	})
+	if err != nil {
+		return fmt.Errorf("policy: %w", err)
+	}
+
+	// The audit log goes to stderr, never stdout.
+	//
+	// In stdio mode stdout *is* the MCP transport: it carries newline-delimited
+	// JSON-RPC. A single stray line written there corrupts the protocol stream,
+	// and the client then fails in a way that looks nothing like a logging bug.
+	srv, err := server.New(server.Options{
+		Version: version,
+		Policy:  pol,
+		Audit:   audit.New(os.Stderr),
+	})
+	if err != nil {
+		return err
+	}
+
+	serverinfo.Register(srv, serverinfo.Config{
+		Version:  version,
+		Persona:  cfg.persona,
+		Mode:     cfg.mode,
+		Projects: cfg.projectList(),
+		Tools:    []string{"server_info"},
+	})
+
+	// Stop cleanly on Ctrl-C or SIGTERM so the client sees a closed transport
+	// rather than a truncated frame.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return srv.ServeStdio(ctx)
 }

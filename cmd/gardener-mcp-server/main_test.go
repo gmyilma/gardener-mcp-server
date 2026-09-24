@@ -109,3 +109,75 @@ func TestRunRejectsInvalidMode(t *testing.T) {
 		t.Fatal("run(--mode=bogus) = nil, want error")
 	}
 }
+
+func TestProjectList(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{name: "empty", in: "", want: nil},
+		{name: "whitespace only", in: "  ", want: nil},
+		{name: "single", in: "alpha", want: []string{"alpha"}},
+		{name: "several", in: "alpha,beta", want: []string{"alpha", "beta"}},
+		{name: "spaces are trimmed", in: " alpha , beta ", want: []string{"alpha", "beta"}},
+		{name: "empty entries are dropped", in: "alpha,,beta,", want: []string{"alpha", "beta"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := (&config{projects: tc.in}).projectList()
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("projectList(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("projectList(%q)[%d] = %q, want %q", tc.in, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestServeRejectsServiceMode(t *testing.T) {
+	t.Parallel()
+
+	// Service mode is not implemented; it must fail loudly rather than
+	// silently falling back to stdio.
+	err := serve(&config{mode: "service", persona: "operator"})
+	if err == nil {
+		t.Fatal("serve(service) = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "M1.6") {
+		t.Errorf("error = %q, want it to say when service mode arrives", err)
+	}
+}
+
+func TestServeRejectsInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	if err := serve(&config{mode: "local", persona: "admin"}); err == nil {
+		t.Error("serve() with an unknown persona = nil, want an error")
+	}
+	if err := serve(&config{mode: "bogus", persona: "operator"}); err == nil {
+		t.Error("serve() with an unknown mode = nil, want an error")
+	}
+}
+
+func TestServeRejectsInvalidProjectName(t *testing.T) {
+	t.Parallel()
+
+	// A malformed allowlist entry must fail at startup, not per request.
+	err := serve(&config{mode: "local", persona: "operator", projects: "NOT OK"})
+	if err == nil {
+		t.Fatal("serve() with an invalid project name = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "policy") {
+		t.Errorf("error = %q, want it to name the policy layer", err)
+	}
+}
